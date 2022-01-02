@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from paperfetcher import GlobalConfig
-from paperfetcher import handsearch
+from paperfetcher import handsearch, snowballsearch
 from paperfetcher.exceptions import SearchError
 
 ################################################################################
@@ -56,9 +56,9 @@ st.write("Automate handsearch for your systematic review.")
 st.header("What type of search do you want to perform?")
 
 search = st.radio("Select one:", ('Handsearch',
-                                  'Snowball-search - Coming soon!'))
+                                  'Snowball-search'))
 
-with st.expander("What's this?"):
+with st.expander("What are handsearch and snowball-search?"):
     st.markdown("""
                 - **Handsearch**:
                 - **Snowball-search**:
@@ -75,13 +75,15 @@ st.markdown("---")
 # - At the end, update the if-else construct to call that function.
 ################################################################################
 
-
-def handsearch_params():
+if search == "Handsearch":
     st.header("Define your handsearch parameters.")
 
     # Journals
     st.subheader("a) Select journals to search in.")
-    st.write("You can add multiple journals to a single handsearch.")
+    st.write("""You can add multiple journals to a single handsearch.
+                You can either search for a journal by its name using the select box on the left,
+                or enter its ISSN in the text box on the right. To add a journal to the handsearch, click on
+                the 'Add to search' button below your entry.""")
 
     col1, col2 = st.columns(2)
 
@@ -125,6 +127,8 @@ def handsearch_params():
             else:
                 st.session_state.cr_hs_selected_journals_list.append(issn)
 
+    st.write("The journals you selected appear below. If you wish to remove a journal from the search, click on the 'X' next to it.")
+
     issn_list = st.multiselect("Selected journals (ISSNs) to search in",
                                help="""This is the final list of journals paperfetcher will fetch data from.
                                        Click on the 'X' next to the journal name to remove it from the search.
@@ -147,14 +151,23 @@ def handsearch_params():
                             min_value=datetime.date(1900, 1, 1),
                             max_value=datetime.date.today())
 
-    # Start and end date
-    st.subheader("c) Enter search keywords (optional).")
+    # Keywords
+    st.subheader("c) Enter search keywords [optional].")
 
-    keywords = st.text_area(label="Enter comma-separated keywords")
+    with st.expander("Click to expand."):
+        st.write("You can refine your search using keywords.")
+        keywords = st.text_area(label="Enter comma-separated keywords")
 
-    st.subheader("d) Output format")
+    st.subheader("d) Select output format.")
 
-    formats = {"doi-txt": 'A text file of DOIs (.txt)',
+    st.write("""You can choose from two output formats:""")
+    st.markdown("""
+                - A text file of DOIs (.txt): Each DOI appears on a separate line.
+                You can use this data to import papers into citation management programs such as Zotero ([instructions](https://www.zotero.org/support/adding_items_to_zotero#add_item_by_identifier)).
+                - An RIS citation file (.ris): Contains metadata and abstracts (if available on Crossref) for each paper.
+                You can directly import this file into both citation management programs such as Zotero ([instructions](https://www.zotero.org/support/adding_items_to_zotero#importing_from_other_tools)) and systematic review screening tools such as Covidence ([instructions](https://support.covidence.org/help/study-imports)).""")
+
+    formats = {"doi-txt": 'A text file of DOIs (.txt).',
                "ris": 'RIS with abstracts (.ris)'}
 
     out_format = st.radio("How would you like to download your results?",
@@ -234,7 +247,91 @@ def handsearch_params():
             st.download_button(label="Download results (.ris file)",
                                data=results.to_ris_string())
 
+elif search == "Snowball-search":
+    st.header("Define your snowball-search parameters.")
 
-# If-else construct
-if search == "Handsearch":
-    handsearch_params()
+    # Papers
+    st.subheader("a) Select the papers you want to start from.")
+    st.write("Enter the DOIs of the papers you want to start from. You can add multiple DOIs to a single snowball-search. Separate DOIs with commas.")
+
+    dois = st.text_area("Enter comma-separated DOIs")
+
+    st.subheader("b) Select type of snowball-search.")
+
+    st.write("""You can either perform backward reference chasing or forward citation chasing:""")
+    st.markdown("""
+                - Backward reference chasing: For each article X, find all the articles which X cites.
+                - Forward citation chasing: For each article X, find all the articles which cite X.""")
+
+    types = {"backward": 'Search references (backward reference chasing).',
+             "forward": 'Search citing articles (forward citation chasing)'}
+
+    snowball_type = st.radio("Select an option:",
+                             list(types.keys()),
+                             format_func=lambda fmt: types[fmt])
+
+    st.subheader("c) Select output format.")
+
+    st.write("""You can choose from two output formats:""")
+    st.markdown("""
+                - A text file of DOIs (.txt): Each DOI appears on a separate line.
+                You can use this data to import papers into citation management programs such as Zotero ([instructions](https://www.zotero.org/support/adding_items_to_zotero#add_item_by_identifier)).
+                - An RIS citation file (.ris): Contains metadata for each paper.
+                You can directly import this file into both citation management programs such as Zotero ([instructions](https://www.zotero.org/support/adding_items_to_zotero#importing_from_other_tools)) and systematic review screening tools such as Covidence ([instructions](https://support.covidence.org/help/study-imports)).""")
+
+    formats = {"doi-txt": 'A text file of DOIs (.txt).',
+               "ris": 'RIS with abstracts (.ris)'}
+
+    out_format = st.radio("How would you like to download your results?",
+                          list(formats.keys()),
+                          format_func=lambda fmt: formats[fmt])
+
+    # Search button
+    st.subheader("Perform search")
+
+    if st.button("Search"):
+        results = None
+
+        if "," in dois:
+            dois = dois.split(",").strip()
+        else:
+            dois = [dois]
+
+        print(dois)
+
+        if snowball_type == "backward":
+            with st.spinner('Fetching references.'):
+                search = snowballsearch.CrossrefBackwardReferenceSearch(dois)
+                search()
+
+            if out_format == 'doi-txt':
+                results = search.get_DOIDataset()
+
+            elif out_format == "ris":
+                results = search.get_RISDataset()
+
+        elif snowball_type == "forward":
+            with st.spinner('Fetching citations.'):
+                search = snowballsearch.COCIForwardCitationSearch(dois)
+                search()
+
+            if out_format == 'doi-txt':
+                results = search.get_DOIDataset()
+
+            elif out_format == "ris":
+                results = search.get_RISDataset()
+
+        st.success('Search complete!')
+
+        st.header("4. Results")
+
+        st.write("Download search results to your computer.")
+
+        # Save results
+        if out_format == 'doi-txt':
+            st.download_button(label="Download results (.txt file)",
+                               data=results.to_txt_string())
+
+        elif out_format == 'ris':
+            st.download_button(label="Download results (.ris file)",
+                               data=results.to_ris_string())
