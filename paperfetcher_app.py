@@ -7,8 +7,8 @@ import time
 import pandas as pd
 import streamlit as st
 
+from paperfetcher import GlobalConfig
 from paperfetcher import handsearch
-from paperfetcher.datastructures import DOIDataset
 from paperfetcher.exceptions import SearchError
 
 ################################################################################
@@ -16,6 +16,9 @@ from paperfetcher.exceptions import SearchError
 ################################################################################
 
 st.set_page_config(layout="wide")
+
+# Allow progress bars
+GlobalConfig.streamlit = True
 
 ################################################################################
 # Constants
@@ -46,35 +49,11 @@ st.title("Paperfetcher")
 st.write("Automate handsearch for your systematic review.")
 
 ################################################################################
-# Section 1
-# Choose a database and search type
-################################################################################
-
-st.header("1. Choose a database to search in.")
-
-db = st.radio("Select one:",
-              ('Crossref',
-               'PubMed - Coming soon!'))
-
-with st.expander("Need help?"):
-    st.markdown("""
-                Paperfetcher works by searching for citations in supported databases.
-                You can choose from the following databases:
-                - **Crossref**: Crossref contains metadata for over 100 million records from journals, books,
-                  conference proceedings, etc. across a variety of disciplines.
-                  To learn more about Crossref, visit [Crossref.org](https://www.crossref.org).
-                - **PubMed**: PubMed contains metadata of over 30 million records from biomedical literature.
-                  To learn more about PubMed, visit [PubMed.gov](https://pubmed.ncbi.nlm.nih.gov)
-                """)
-
-st.markdown("---")
-
-################################################################################
 # Section 2
 # Choose a search type (handsearch or snowball search)
 ################################################################################
 
-st.header("2. What type of search do you want to perform?")
+st.header("What type of search do you want to perform?")
 
 search = st.radio("Select one:", ('Handsearch',
                                   'Snowball-search - Coming soon!'))
@@ -89,17 +68,16 @@ st.markdown("---")
 
 ################################################################################
 # Section 3
-# Database and search-specific information collection
+# Search-specific information collection
 #
 # - Collect all the user-specified parameters required to perform a search
 # with paperfetcher here.
-# - Add a function for each new database-search combination.
 # - At the end, update the if-else construct to call that function.
 ################################################################################
 
 
-def crossref_handsearch():
-    st.header("3. Define your handsearch parameters.")
+def handsearch_params():
+    st.header("Define your handsearch parameters.")
 
     # Journals
     st.subheader("a) Select journals to search in.")
@@ -177,7 +155,7 @@ def crossref_handsearch():
     st.subheader("d) Output format")
 
     formats = {"doi-txt": 'A text file of DOIs (.txt)',
-               "ris": 'RIS with abstracts (.ris) - Coming soon!'}
+               "ris": 'RIS with abstracts (.ris)'}
 
     out_format = st.radio("How would you like to download your results?",
                           list(formats.keys()),
@@ -221,12 +199,20 @@ def crossref_handsearch():
                         if results is None:
                             results = search.get_DOIDataset()
                         else:
-                            print(type(results))
-                            print(type(search.get_DOIDataset()))
                             results.extend_dataset(search.get_DOIDataset())
 
                     elif out_format == 'ris':
-                        pass
+                        # Fetch DOIs and abstracts
+                        search(select=True, select_fields=["DOI", "abstract"])
+
+                        if results is None:
+                            results = search.get_RISDataset(extra_field_list=["abstract"],
+                                                            extra_field_parser_list=[None],
+                                                            extra_field_rispy_tags=["notes_abstract"])
+                        else:
+                            results.extend_dataset(search.get_RISDataset(extra_field_list=["abstract"],
+                                                                         extra_field_parser_list=[None],
+                                                                         extra_field_rispy_tags=["notes_abstract"]))
 
                 except SearchError as e:
                     st.error("Search for ISSN {} failed. Error message: ".format(issn) + str(e))
@@ -245,21 +231,10 @@ def crossref_handsearch():
                                data=results.to_txt_string())
 
         elif out_format == 'ris':
-            pass
+            st.download_button(label="Download results (.ris file)",
+                               data=results.to_ris_string())
 
 
 # If-else construct
-if db == "Crossref" and search == "Handsearch":
-    crossref_handsearch()
-
-# Crossref snowballsearch
-if db == "Crossref" and search == "Snowball-search":
-    pass
-
-# PubMed handsearch
-if db == "PubMed" and search == "Handsearch":
-    pass
-
-# PubMed snowballsearch
-if db == "PubMed" and search == "Snowball-search":
-    pass
+if search == "Handsearch":
+    handsearch_params()
