@@ -293,7 +293,7 @@ elif search == "Snowball-search":
         results = None
 
         if "," in dois:
-            dois = dois.split(",").strip()
+            dois = [doi.strip() for doi in dois.split(",")]
         else:
             dois = [dois]
 
