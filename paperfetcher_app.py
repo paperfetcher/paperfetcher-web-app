@@ -15,6 +15,12 @@ from paperfetcher.exceptions import SearchError
 # Init config
 ################################################################################
 
+__version__ = 1.0
+
+################################################################################
+# Init config
+################################################################################
+
 st.set_page_config(layout="wide")
 
 # Allow progress bars
@@ -48,6 +54,18 @@ def load_crossref_journals_dict():
 st.title("Paperfetcher")
 st.write("Automate handsearch for your systematic review.")
 
+with st.expander("If you use this tool in your research, please cite Pallath and Zhang (2021). Paperfetcher: A tool to automate handsearch for systematic reviews. arXiv:2110.12490 [cs.IR]. (click to expand BibTeX)"):
+    st.code("""
+@misc{pallath2021paperfetcher,
+      title={Paperfetcher: A tool to automate handsearch for systematic reviews},
+      author={Akash Pallath and Qiyang Zhang},
+      year={2021},
+      eprint={2110.12490},
+      archivePrefix={arXiv},
+      primaryClass={cs.IR}
+}
+""", language="latex")
+
 ################################################################################
 # Section 2
 # Choose a search type (handsearch or snowball search)
@@ -60,8 +78,7 @@ search = st.radio("Select one:", ('Handsearch',
 
 with st.expander("What are handsearch and snowball-search?"):
     st.markdown("""
-                - **Handsearch**:
-                - **Snowball-search**:
+                Refer to [our manuscript](https://arxiv.org/abs/2110.12490) for details.
                 """)
 
 st.markdown("---")
@@ -234,7 +251,32 @@ if search == "Handsearch":
 
         st.success('Search complete!')
 
-        st.header("4. Results")
+        st.header("Search report")
+
+        st.write("Click on the icon at the top right of the box to copy this report to clipboard.")
+
+        report = """Search performed on {date} using Paperfetcher web-app v{version}.
+
+Search type: Handsearch
+
+Journals/ISSNs searched:
+{issns}
+
+Between: {start} and {end}.
+
+Keywords: {keywords}
+
+Fetched article count: {count}""".format(date=datetime.date.today().strftime("%B %d, %Y"),
+                                         version=__version__,
+                                         issns="\n".join(["- {}".format(issn) for issn in issn_list]),
+                                         start=start,
+                                         end=end,
+                                         keywords=",".join(keywords),
+                                         count=len(results))
+
+        st.code(report)
+
+        st.header("Results")
 
         st.write("Download search results to your computer.")
 
@@ -323,7 +365,26 @@ elif search == "Snowball-search":
 
         st.success('Search complete!')
 
-        st.header("4. Results")
+        st.header("Search report")
+
+        st.write("Click on the icon at the top right of the box to copy this report to clipboard.")
+
+        report = """Search performed on {date} using Paperfetcher web-app v{version}.
+
+Search type: {type}
+
+Search DOIs:
+{dois}
+
+Fetched DOI count: {count}""".format(date=datetime.date.today().strftime("%B %d, %Y"),
+                                     version=__version__,
+                                     type=types[snowball_type],
+                                     dois="\n".join(["- {}".format(doi) for doi in dois]),
+                                     count=len(results))
+
+        st.code(report)
+
+        st.header("Results")
 
         st.write("Download search results to your computer.")
 
