@@ -1,6 +1,10 @@
 # paperfetcher-app
 
-This repository contains the *Paperfetcher* streamlit web-app, available online at [share.streamlit.io](https://share.streamlit.io/paperfetcher/paperfetcher-web-app/main/paperfetcher_app.py).
+This repository contains the *Paperfetcher* streamlit web-app.
+
+**Running the app online**
+
+[Run Paperfetcher web-app](https://share.streamlit.io/paperfetcher/paperfetcher-web-app/main/paperfetcher_app.py).
 
 **Running the app locally**
 
