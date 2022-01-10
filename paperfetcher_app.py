@@ -255,6 +255,11 @@ if search == "Handsearch":
 
         st.write("Click on the icon at the top right of the box to copy this report to clipboard.")
 
+        if keywords is not None
+            keywords = ",".join(keywords)
+        else:
+            keywords = "None"
+
         report = """Search performed on {date} using Paperfetcher web-app v{version}.
 
 Search type: Handsearch
@@ -271,7 +276,7 @@ Fetched article count: {count}""".format(date=datetime.date.today().strftime("%B
                                          issns="\n".join(["- {}".format(issn) for issn in issn_list]),
                                          start=start,
                                          end=end,
-                                         keywords=",".join(keywords),
+                                         keywords=keywords,
                                          count=len(results))
 
         st.code(report)
