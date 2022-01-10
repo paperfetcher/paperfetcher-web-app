@@ -255,7 +255,7 @@ if search == "Handsearch":
 
         st.write("Click on the icon at the top right of the box to copy this report to clipboard.")
 
-        if keywords is not None
+        if keywords is not None:
             keywords = ",".join(keywords)
         else:
             keywords = "None"
