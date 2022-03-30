@@ -39,12 +39,23 @@ CROSSREF_JOURNALS_CSV_URL = "http://ftp.crossref.org/titlelist/titleFile.csv"
 # All functions that perform data-processing go here.
 ################################################################################
 
+
 # Cache to avoid repeated loading and processing of >10 MB data.
 @st.cache(persist=True)
 def load_crossref_journals_dict():
     data = pd.read_csv(CROSSREF_JOURNALS_CSV_URL)
     issn_title_df = data[['eissn', 'JournalTitle']]
     return issn_title_df.dropna()
+
+
+if 'search_complete' not in st.session_state:
+    st.session_state.search_complete = False
+
+if 'report' not in st.session_state:
+    st.session_state.report = ""
+
+if 'results' not in st.session_state:
+    st.session_state.results = None
 
 
 ################################################################################
@@ -249,11 +260,11 @@ if search == "Handsearch":
 
             my_bar.progress((issn_idx + 1.0) / len(issn_list))
 
+        st.session_state.results = results
+
+        st.session_state.search_complete = True
+
         st.success('Search complete!')
-
-        st.header("Search report")
-
-        st.write("Click on the icon at the top right of the box to copy this report to clipboard.")
 
         if keywords is not None:
             keywords = ",".join(keywords)
@@ -279,20 +290,7 @@ Fetched article count: {count}""".format(date=datetime.date.today().strftime("%B
                                          keywords=keywords,
                                          count=len(results))
 
-        st.code(report)
-
-        st.header("Results")
-
-        st.write("Download search results to your computer.")
-
-        # Save results
-        if out_format == 'doi-txt':
-            st.download_button(label="Download results (.txt file)",
-                               data=results.to_txt_string())
-
-        elif out_format == 'ris':
-            st.download_button(label="Download results (.ris file)",
-                               data=results.to_ris_string())
+        st.session_state.report = report
 
 elif search == "Snowball-search":
     st.header("Define your snowball-search parameters.")
@@ -368,11 +366,11 @@ elif search == "Snowball-search":
             elif out_format == "ris":
                 results = search.get_RISDataset()
 
+        st.session_state.results = results
+
+        st.session_state.search_complete = True
+
         st.success('Search complete!')
-
-        st.header("Search report")
-
-        st.write("Click on the icon at the top right of the box to copy this report to clipboard.")
 
         report = """Search performed on {date} using Paperfetcher web-app v{version}.
 
@@ -387,17 +385,28 @@ Fetched DOI count: {count}""".format(date=datetime.date.today().strftime("%B %d,
                                      dois="\n".join(["- {}".format(doi) for doi in dois]),
                                      count=len(results))
 
-        st.code(report)
+        st.session_state.report = report
 
-        st.header("Results")
+################################################################################
+# Display results
+################################################################################
 
-        st.write("Download search results to your computer.")
+if st.session_state.search_complete:
+    st.header("Search report")
 
-        # Save results
+    st.write("Click on the icon at the top right of the box to copy this report to clipboard.")
+
+    st.code(st.session_state.report)
+
+    st.header("Results")
+
+    st.write("Download search results to your computer.")
+
+    if st.session_state.results is not None:
         if out_format == 'doi-txt':
             st.download_button(label="Download results (.txt file)",
-                               data=results.to_txt_string())
+                               data=st.session_state.results.to_txt_string())
 
         elif out_format == 'ris':
             st.download_button(label="Download results (.ris file)",
-                               data=results.to_ris_string())
+                               data=st.session_state.results.to_ris_string())
