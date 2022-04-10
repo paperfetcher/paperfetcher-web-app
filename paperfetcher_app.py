@@ -109,7 +109,6 @@ st.markdown("---")
 # - Perform a dry run to check size of search results
 # - Check that the search is feasible, i.e., it does not use up too many resources
 # - Perform search!
-# - Display celebratory snowflakes!
 ################################################################################
 
 if search == "Handsearch":
@@ -406,6 +405,9 @@ elif search == "Snowball-search":
         st.session_state.search_complete = True
 
         st.success('Search complete!')
+
+        # Display celebratory snowflakes!
+        st.snow()
 
         report = """Search performed on {date} using Paperfetcher web-app v{version}.
 
