@@ -35,7 +35,10 @@ print("Streamlit loglevel {}".format(st_loglevel))
 
 # Set limit on size of search
 # This is to prevent cloud instances from exceeding resource limits
-result_limit = int(os.environ.get("paperfetcher_searchlimit", None))
+result_limit = os.environ.get("paperfetcher_searchlimit", None)
+
+if result_limit is not None:
+    result_limit = int(result_limit)
 
 ################################################################################
 # Constants
@@ -76,17 +79,17 @@ if 'results' not in st.session_state:
 st.title("Paperfetcher")
 st.write("Automate handsearch for your systematic review.")
 
-with st.expander("If you use this tool in your research, please cite Pallath and Zhang (2021). Paperfetcher: A tool to automate handsearch for systematic reviews. arXiv:2110.12490 [cs.IR]. (click to expand BibTeX)"):
-    st.code("""
-@misc{pallath2021paperfetcher,
-      title={Paperfetcher: A tool to automate handsearch for systematic reviews},
-      author={Akash Pallath and Qiyang Zhang},
-      year={2021},
-      eprint={2110.12490},
-      archivePrefix={arXiv},
-      primaryClass={cs.IR}
-}
-""", language="latex")
+# with st.expander("If you use this tool in your research, please cite Pallath and Zhang (2021). Paperfetcher: A tool to automate handsearch for systematic reviews. arXiv:2110.12490 [cs.IR]. (click to expand BibTeX)"):
+#    st.code("""
+# @misc{pallath2021paperfetcher,
+#      title={Paperfetcher: A tool to automate handsearch for systematic reviews},
+#      author={Akash Pallath and Qiyang Zhang},
+#      year={2021},
+#      eprint={2110.12490},
+#      archivePrefix={arXiv},
+#      primaryClass={cs.IR}
+# }
+# """, language="latex")
 
 ################################################################################
 # Section 2
@@ -96,7 +99,7 @@ with st.expander("If you use this tool in your research, please cite Pallath and
 st.header("What type of search do you want to perform?")
 
 search = st.radio("Select one:", ('Handsearch',
-                                  'Snowball-search'))
+                                  'Citation search'))
 
 st.markdown("---")
 
@@ -326,16 +329,16 @@ if search == "Handsearch":
 
             st.session_state.report = report
 
-elif search == "Snowball-search":
-    st.header("Define your snowball-search parameters.")
+elif search == "Citation search":
+    st.header("Define your citation search parameters.")
 
     # Papers
     st.subheader("a) Select the papers you want to start from.")
-    st.write("Enter the DOIs of the papers you want to start from. You can add multiple DOIs to a single snowball-search. Separate DOIs with commas.")
+    st.write("Enter the DOIs of the papers you want to start from. You can add multiple DOIs to a single citation search. Separate DOIs with commas.")
 
     dois = st.text_area("Enter comma-separated DOIs")
 
-    st.subheader("b) Select type of snowball-search.")
+    st.subheader("b) Select type of citation search.")
 
     st.write("""You can either perform backward reference chasing or forward citation chasing:""")
     st.markdown("""
