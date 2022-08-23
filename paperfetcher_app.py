@@ -4,6 +4,7 @@
 import datetime
 import logging
 import os
+import subprocess
 
 import pandas as pd
 import streamlit as st
@@ -12,15 +13,16 @@ from paperfetcher import GlobalConfig
 from paperfetcher import handsearch, snowballsearch
 from paperfetcher.exceptions import SearchError
 
-################################################################################
+########################################################################################################################
 # Init config
-################################################################################
+########################################################################################################################
 
-__version__ = 1.0
+# Use Git commit hash for versioning
+__version__ = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
 
-################################################################################
+########################################################################################################################
 # Init config
-################################################################################
+########################################################################################################################
 
 st.set_page_config(layout="wide")
 
@@ -40,18 +42,18 @@ result_limit = os.environ.get("paperfetcher_searchlimit", None)
 if result_limit is not None:
     result_limit = int(result_limit)
 
-################################################################################
+########################################################################################################################
 # Constants
-################################################################################
+########################################################################################################################
 
 # URL for the CSV file of all journals indexed in crossref
 CROSSREF_JOURNALS_CSV_URL = "http://ftp.crossref.org/titlelist/titleFile.csv"
 
-################################################################################
+########################################################################################################################
 # Supporting functions
 #
 # All functions that perform data-processing go here.
-################################################################################
+########################################################################################################################
 
 
 # Cache to avoid repeated loading and processing of >10 MB data.
@@ -62,39 +64,56 @@ def load_crossref_journals_dict():
     return issn_title_df.dropna()
 
 
+def prepare_handsearch_doi_dataset(search_objs):
+    results = None
+    for search in search_objs:
+        if results is None:
+            results = search.get_DOIDataset()
+        else:
+            results.extend_dataset(search.get_DOIDataset())
+    return results
+
+
+def prepare_handsearch_ris_dataset(search_objs):
+    results = None
+    for search in search_objs:
+        if results is None:
+            results = search.get_RISDataset(extra_field_list=["abstract"],
+                                            extra_field_parser_list=[None],
+                                            extra_field_rispy_tags=["notes_abstract"])
+        else:
+            results.extend_dataset(search.get_RISDataset(extra_field_list=["abstract"],
+                                                        extra_field_parser_list=[None],
+                                                        extra_field_rispy_tags=["notes_abstract"]))
+    return results
+
+
+########################################################################################################################
+# App display and control flow.
+########################################################################################################################
+
+if 'search_type' not in st.session_state:
+    st.session_state.search_type = None
+
 if 'search_complete' not in st.session_state:
     st.session_state.search_complete = False
 
-if 'report' not in st.session_state:
-    st.session_state.report = ""
+if 'search_objs' not in st.session_state:
+    st.session_state.search_objs = []
 
 if 'results' not in st.session_state:
     st.session_state.results = None
 
-
-################################################################################
-# App display and control flow.
-################################################################################
+if 'report' not in st.session_state:
+    st.session_state.report = ""
 
 st.title("Paperfetcher")
-st.write("Automate handsearch for your systematic review.")
+st.write("Automate handsearching and citation searching for your systematic review.")
 
-# with st.expander("If you use this tool in your research, please cite Pallath and Zhang (2021). Paperfetcher: A tool to automate handsearch for systematic reviews. arXiv:2110.12490 [cs.IR]. (click to expand BibTeX)"):
-#    st.code("""
-# @misc{pallath2021paperfetcher,
-#      title={Paperfetcher: A tool to automate handsearch for systematic reviews},
-#      author={Akash Pallath and Qiyang Zhang},
-#      year={2021},
-#      eprint={2110.12490},
-#      archivePrefix={arXiv},
-#      primaryClass={cs.IR}
-# }
-# """, language="latex")
-
-################################################################################
+########################################################################################################################
 # Section 2
 # Choose a search type (handsearch or snowball search)
-################################################################################
+########################################################################################################################
 
 st.header("What type of search do you want to perform?")
 
@@ -103,26 +122,31 @@ search = st.radio("Select one:", ('Handsearch',
 
 st.markdown("---")
 
-################################################################################
+########################################################################################################################
 # Section 3
 # Search-specific information collection + execution
 #
-# - Collect all the user-specified parameters required to perform a search
-# with paperfetcher.
-# - Perform a dry run to check size of search results
-# - Check that the search is feasible, i.e., it does not use up too many resources
-# - Perform search!
-################################################################################
+# - Collect all the user-specified parameters required to perform a search with paperfetcher.
+# - Perform a dry run to check size of search results.
+# - Check that the search is feasible, i.e., it does not use up too many resources.
+# - Perform search.
+# - Store search objects.
+########################################################################################################################
 
 if search == "Handsearch":
+    ############################################################################
+    # Handsearch
+    ############################################################################
+
     st.header("Define your handsearch parameters.")
 
     # Journals
     st.subheader("a) Select journals to search in.")
     st.write("""You can add multiple journals to a single handsearch.
                 You can either search for a journal by its name using the select box on the left,
-                or enter its ISSN in the text box on the right. To add a journal to the handsearch, click on
-                the 'Add to search' button below your entry.""")
+                or enter its ISSN in the text box on the right.""")
+    st.markdown("""**To add a journal to the handsearch, click on
+                the 'Add to search' button below your entry.**""")
 
     col1, col2 = st.columns(2)
 
@@ -162,7 +186,7 @@ if search == "Handsearch":
 
         if st.button("Add to search", key="cr_hs_issn"):
             if issn.strip() == "":
-                st.error('You must select a journal first!')
+                st.error('You must enter an ISSN first!')
             else:
                 st.session_state.cr_hs_selected_journals_list.append(issn)
 
@@ -226,110 +250,116 @@ if search == "Handsearch":
         fromd = start
         untild = end
 
+        search_objs = []
         results = None
 
         # Evaluate size of search
         expected_size = 0
 
-        for issn_idx, issn_val in enumerate(issn_list):
-            if "," in issn_val:
-                issn = issn_val.split(",")[1].strip()
-            else:
-                issn = issn_val
-            with st.spinner("Evaluating size of search (ISSN {})".format(issn_val)):
-                try:
-                    search = handsearch.CrossrefSearch(ISSN=issn,
-                                                       keyword_list=keywords,
-                                                       from_date=fromd,
-                                                       until_date=untild)
-                    expected_size += search.dry_run()
-                except SearchError as e:
-                    st.error("Evaluation for ISSN {} failed. Error message: ".format(issn) + str(e))
+        # Check if issn_list is not empty
+        if len(issn_list) == 0:
+            st.error("You must add journals/ISSNs to your search first!")
 
-        # Check that search does not exceed resource limits
-        if result_limit is not None and expected_size > result_limit:
-            st.error("""This search will return {} results.
-            Unfortunately, due to resource limitations, the cloud version of Paperfetcher cannot support
-            searches that return more than {} results.""".format(expected_size, result_limit))
         else:
-            # Perform search
-            st.info('This search will return {} results'.format(expected_size))
-
-            my_bar = st.progress(0)
-
             for issn_idx, issn_val in enumerate(issn_list):
                 if "," in issn_val:
                     issn = issn_val.split(",")[1].strip()
                 else:
                     issn = issn_val
-
-                with st.spinner('Fetching articles from {}'.format(issn_val)):
+                with st.spinner("Evaluating size of search (ISSN {})".format(issn_val)):
                     try:
                         search = handsearch.CrossrefSearch(ISSN=issn,
-                                                           keyword_list=keywords,
-                                                           from_date=fromd,
-                                                           until_date=untild)
+                                                        keyword_list=keywords,
+                                                        from_date=fromd,
+                                                        until_date=untild)
+                        expected_size += search.dry_run()
+                    except SearchError as e:
+                        st.error("Evaluation for ISSN {} failed. Error message: ".format(issn) + str(e))
 
-                        if out_format == 'doi-txt':
-                            # Only fetch DOIs
-                            search(select=True, select_fields=["DOI"])
+            # Check that search does not exceed resource limits
+            if result_limit is not None and expected_size > result_limit:
+                st.error("""This search will return {} results.
+                Unfortunately, due to resource limitations, the cloud version of Paperfetcher cannot support
+                searches that return more than {} results.""".format(expected_size, result_limit))
+            elif expected_size < 1:
+                st.error("""This search will return no results.""")
+            else:
+                # Perform search
+                st.info('This search will return {} results'.format(expected_size))
 
-                            if results is None:
-                                results = search.get_DOIDataset()
-                            else:
-                                results.extend_dataset(search.get_DOIDataset())
+                my_bar = st.progress(0)
 
-                        elif out_format == 'ris':
+                for issn_idx, issn_val in enumerate(issn_list):
+                    if "," in issn_val:
+                        issn = issn_val.split(",")[1].strip()
+                    else:
+                        issn = issn_val
+
+                    with st.spinner('Fetching articles from {}'.format(issn_val)):
+                        try:
+                            search = handsearch.CrossrefSearch(ISSN=issn,
+                                                               keyword_list=keywords,
+                                                               from_date=fromd,
+                                                               until_date=untild)
+
                             # Fetch DOIs and abstracts
                             search(select=True, select_fields=["DOI", "abstract"])
 
-                            if results is None:
-                                results = search.get_RISDataset(extra_field_list=["abstract"],
-                                                                extra_field_parser_list=[None],
-                                                                extra_field_rispy_tags=["notes_abstract"])
-                            else:
-                                results.extend_dataset(search.get_RISDataset(extra_field_list=["abstract"],
-                                                                             extra_field_parser_list=[None],
-                                                                             extra_field_rispy_tags=["notes_abstract"]))
+                            # Append to search objects
+                            search_objs.append(search)
+                                
+                        except SearchError as e:
+                            st.error("Search for ISSN {} failed. Error message: ".format(issn) + str(e))
 
-                    except SearchError as e:
-                        st.error("Search for ISSN {} failed. Error message: ".format(issn) + str(e))
+                    my_bar.progress((issn_idx + 1.0) / len(issn_list))
 
-                my_bar.progress((issn_idx + 1.0) / len(issn_list))
+                try:
+                    if out_format == 'doi-txt':
+                        results = prepare_handsearch_doi_dataset(search_objs)
+                    elif out_format == 'ris':
+                        results = prepare_handsearch_ris_dataset(search_objs)
 
-            st.session_state.results = results
+                except Exception as e:
+                    st.error("Results dataset preparation failed. Error message: " + str(e))
 
-            st.session_state.search_complete = True
+                st.session_state.search_type = "Handsearch"
+                st.session_state.search_complete = True
+                st.session_state.search_objs = search_objs
+                st.session_state.results = results
 
-            st.success('Search complete!')
+                st.success('Search complete!')
 
-            if keywords is not None:
-                keywords = ",".join(keywords)
-            else:
-                keywords = "None"
+                if keywords is not None:
+                    keywords = ",".join(keywords)
+                else:
+                    keywords = "None"
 
-            report = """Search performed on {date} using Paperfetcher web-app v{version}.
+                report = """Search performed on {date} using Paperfetcher web-app version {version}.
 
-    Search type: Handsearch
+Search type: Handsearch
 
-    Journals/ISSNs searched:
-    {issns}
+Journals/ISSNs searched:
+{issns}
 
-    Between: {start} and {end}.
+Between: {start} and {end}.
 
-    Keywords: {keywords}
+Keywords: {keywords}
 
-    Fetched article count: {count}""".format(date=datetime.date.today().strftime("%B %d, %Y"),
-                                             version=__version__,
-                                             issns="\n".join(["- {}".format(issn) for issn in issn_list]),
-                                             start=start,
-                                             end=end,
-                                             keywords=keywords,
-                                             count=len(results))
+Fetched article count: {count}""".format(date=datetime.date.today().strftime("%B %d, %Y"),
+                                        version=__version__,
+                                        issns="\n".join(["- {}".format(issn) for issn in issn_list]),
+                                        start=start,
+                                        end=end,
+                                        keywords=keywords,
+                                        count=len(results))
 
-            st.session_state.report = report
+                st.session_state.report = report
 
 elif search == "Citation search":
+    ############################################################################
+    # Citation search
+    ############################################################################
+
     st.header("Define your citation search parameters.")
 
     # Papers
@@ -362,7 +392,7 @@ elif search == "Citation search":
                 You can directly import this file into both citation management programs such as Zotero ([instructions](https://www.zotero.org/support/adding_items_to_zotero#importing_from_other_tools)) and systematic review screening tools such as Covidence ([instructions](https://support.covidence.org/help/study-imports)).""")
 
     formats = {"doi-txt": 'A text file of DOIs (.txt).',
-               "ris": 'RIS with abstracts (.ris)'}
+               "ris": 'RIS (.ris)'}
 
     out_format = st.radio("How would you like to download your results?",
                           list(formats.keys()),
@@ -381,38 +411,46 @@ elif search == "Citation search":
 
         print(dois)
 
+        search_objs = []
+
         if snowball_type == "backward":
-            with st.spinner('Fetching references.'):
-                search = snowballsearch.CrossrefBackwardReferenceSearch(dois)
-                search()
+            try:
+                with st.spinner('Fetching references.'):
+                    search = snowballsearch.CrossrefBackwardReferenceSearch(dois)
+                    search()
+                    search_objs.append(search)
 
-            if out_format == 'doi-txt':
-                results = search.get_DOIDataset()
-
-            elif out_format == "ris":
-                results = search.get_RISDataset()
+            except SearchError as e:
+                st.error("Search failed. Error message: " + str(e))
 
         elif snowball_type == "forward":
-            with st.spinner('Fetching citations.'):
-                search = snowballsearch.COCIForwardCitationSearch(dois)
-                search()
+            try:
+                with st.spinner('Fetching citations.'):
+                    search = snowballsearch.COCIForwardCitationSearch(dois)
+                    search()
+                    search_objs.append(search)
+            
+            except SearchError as e:
+                st.error("Search failed. Error message: " + str(e))
 
+        try:
             if out_format == 'doi-txt':
-                results = search.get_DOIDataset()
+                results = search_objs[0].get_DOIDataset()
 
             elif out_format == "ris":
-                results = search.get_RISDataset()
+                results = search_objs[0].get_RISDataset()
 
-        st.session_state.results = results
+        except Exception as e:
+            st.error("Results dataset preparation failed. Error message: " + str(e))
 
+        st.session_state.search_type = "Citation search"
         st.session_state.search_complete = True
+        st.session_state.search_objs = search_objs
+        st.session_state.results = results
 
         st.success('Search complete!')
 
-        # Display celebratory snowflakes!
-        st.snow()
-
-        report = """Search performed on {date} using Paperfetcher web-app v{version}.
+        report = """Search performed on {date} using Paperfetcher web-app version {version}.
 
 Search type: {type}
 
@@ -444,9 +482,44 @@ if st.session_state.search_complete:
 
     if st.session_state.results is not None:
         if out_format == 'doi-txt':
+            try:
+                data = st.session_state.results.to_txt_string()
+            except Exception:
+                # => Not a DOI dataset
+                # => needs conversion to DOI dataset
+                with st.spinner('Converting to DOIs'):
+                    if st.session_state.search_type == "Handsearch":
+                        results = prepare_handsearch_doi_dataset(st.session_state.search_objs)
+                        st.session_state.results = results
+                    elif st.session_state.search_type == "Citation search":
+                        results = st.session_state.search_objs[0].get_DOIDataset()
+                        st.session_state.results = results
+                        
+                data = st.session_state.results.to_txt_string()
+
             st.download_button(label="Download results (.txt file)",
-                               data=st.session_state.results.to_txt_string())
+                               data=data)
 
         elif out_format == 'ris':
+            try:
+                data = st.session_state.results.to_ris_string()
+            except Exception:
+                # => Not a DOI dataset
+                # => needs conversion to DOI dataset
+                print(st.session_state.search_type)
+                with st.spinner('Converting to RIS'):
+                    if st.session_state.search_type == "Handsearch":
+                        results = prepare_handsearch_ris_dataset(st.session_state.search_objs)
+                        st.session_state.results = results
+                    elif st.session_state.search_type == "Citation search":
+                        results = st.session_state.search_objs[0].get_RISDataset()
+                        st.session_state.results = results
+
+                data = st.session_state.results.to_ris_string()
+
             st.download_button(label="Download results (.ris file)",
-                               data=st.session_state.results.to_ris_string())
+                               data=data)
+
+        st.write("Reload this page to reset the app.")
+
+
