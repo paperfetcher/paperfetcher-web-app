@@ -1,6 +1,6 @@
 # paperfetcher-app
 
-This repository contains the *Paperfetcher* streamlit web-app.s
+This repository contains the *Paperfetcher* streamlit web-app.
 
 ---
 
