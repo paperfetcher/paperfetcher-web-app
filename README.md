@@ -1,15 +1,20 @@
 # paperfetcher-app
 
-This repository contains the *Paperfetcher* streamlit web-app.
+This repository contains the *Paperfetcher* streamlit web-app.s
+
+---
 
 **Running the app online**
 
 Production version (stable):
+
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://paperfetcher-paperfetcher-web-app-paperfetcher-app-0w0vu2.streamlitapp.com/)
 
 Development version (latest changes, can be unstable):
+
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://paperfetcher-paperfetcher-web-app-paperfetcher-app-devel-nzqpi2.streamlitapp.com/)
 
+---
 
 **Running the app locally**
 
