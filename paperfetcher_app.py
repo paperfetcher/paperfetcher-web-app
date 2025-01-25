@@ -57,7 +57,7 @@ CROSSREF_JOURNALS_CSV_URL = "http://ftp.crossref.org/titlelist/titleFile.csv"
 
 
 # Cache to avoid repeated loading and processing of >10 MB data.
-@st.cache(persist=True)
+@st.cache_data(persist=True)
 def load_crossref_journals_dict():
     data = pd.read_csv(CROSSREF_JOURNALS_CSV_URL)
     issn_title_df = data[['eissn', 'JournalTitle']]
